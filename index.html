@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="referrer" content="no-referrer">
+<title>Sensory</title>
+<!--
+  The public page someone without the Sensory app opens.
+
+  The token sits in the URL *fragment* (after the #) on purpose: browsers
+  never send a fragment to the server, so GitHub, which hosts this file,
+  never learns the token. Only Sensory's own endpoint ever sees it.
+
+  This file holds no keys and nothing about anyone. It is safe to host in a
+  public place.
+-->
+<style>
+  :root { color-scheme: dark }
+  * { box-sizing: border-box }
+  body { margin: 0; background: #0B1711; color: #F0EDE4;
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         line-height: 1.5; padding: 28px 22px 40px }
+  .wrap { max-width: 460px; margin: 0 auto }
+  .tag { font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+         color: #FF8C82; margin: 0 0 14px }
+  .tag.calm { color: #6FD08C }
+  h1 { font-size: 30px; line-height: 1.12; margin: 0 0 12px; font-weight: 700 }
+  p { margin: 0 0 14px; color: #C9CFC9 }
+  .card { background: #13241B; border-radius: 15px; padding: 16px; margin: 18px 0 }
+  .coords { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px;
+            color: #F0EDE4; margin: 0 0 4px }
+  .meta { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+          color: #8FA096; margin: 0 }
+  .fresh { color: #6FD08C }
+  .stale { color: #FF8C82 }
+  a.btn { display: block; text-align: center; text-decoration: none;
+          background: #6FD08C; color: #0B1711; font-weight: 700; font-size: 16px;
+          padding: 16px; border-radius: 14px; margin: 18px 0 }
+  .note { border-top: 1px solid #1A2D22; margin-top: 26px; padding-top: 16px;
+          font-size: 12.5px; color: #8FA096 }
+  .note strong { color: #F0EDE4 }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <h1>Loading&hellip;</h1>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = 'https://tepkvwovkpscivdpwajb.supabase.co/functions/v1/live/';
+  var app = document.getElementById('app');
+
+  // Built with createElement and textContent throughout, never innerHTML
+  // with data in it, so a name containing markup can never become markup.
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  function disclaimer(extra) {
+    var d = el('div', 'note');
+    if (extra) d.appendChild(document.createTextNode(extra + ' '));
+    d.appendChild(document.createTextNode('Sensory alerts a person’s own trusted contacts. It is '));
+    d.appendChild(el('strong', null, 'not'));
+    d.appendChild(document.createTextNode(
+      ' an emergency service. For police, fire or ambulance, call your local emergency number.'));
+    return d;
+  }
+
+  function ended() {
+    app.textContent = '';
+    app.appendChild(el('h1', null, 'This link has ended.'));
+    app.appendChild(el('p', null,
+      'Sensory links only work while an alert is active. This one has been cancelled, or it has expired.'));
+    app.appendChild(disclaimer());
+  }
+
+  function howLongAgo(iso) {
+    var secs = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+    if (secs < 60) return secs + ' seconds ago';
+    var mins = Math.round(secs / 60);
+    if (mins < 60) return mins === 1 ? 'a minute ago' : mins + ' minutes ago';
+    var hours = Math.round(mins / 60);
+    return hours === 1 ? 'an hour ago' : hours + ' hours ago';
+  }
+
+  function render(d) {
+    var emergency = d.kind === 'alert';
+    var who = d.name || 'Someone';
+
+    app.textContent = '';
+
+    var tag = el('p', emergency ? 'tag' : 'tag calm',
+      (emergency ? '● Distress alert' : '● Heading out'));
+    app.appendChild(tag);
+    app.appendChild(el('h1', null,
+      emergency ? who + ' needs help.' : who + ' is heading out.'));
+    app.appendChild(el('p', null, emergency
+      ? who + ' raised an alert on Sensory and chose to share this location with you. It updates by itself while the alert is active.'
+      : who + ' is letting you know they are heading out. This page updates itself until they mark themselves safe.'));
+
+    var card = el('div', 'card');
+    if (d.lat !== null && d.lng !== null && d.lat !== undefined) {
+      card.appendChild(el('p', 'coords', d.lat.toFixed(5) + ', ' + d.lng.toFixed(5)));
+
+      var meta = el('p', 'meta');
+      if (d.accuracy !== null && d.accuracy !== undefined) {
+        meta.appendChild(document.createTextNode(
+          'accurate to about ' + Math.round(d.accuracy) + 'm · '));
+      }
+      var stale = (Date.now() - Date.parse(d.updatedAt)) > 10 * 60 * 1000;
+      meta.appendChild(el('span', stale ? 'stale' : 'fresh',
+        'updated ' + howLongAgo(d.updatedAt)));
+      card.appendChild(meta);
+      app.appendChild(card);
+
+      var a = el('a', 'btn', 'Open in Google Maps');
+      a.href = 'https://www.google.com/maps/search/?api=1&query=' + d.lat + ',' + d.lng;
+      a.rel = 'noreferrer noopener';
+      app.appendChild(a);
+    } else {
+      card.appendChild(el('p', 'coords', 'No location yet'));
+      card.appendChild(el('p', 'meta',
+        'Their phone has not managed a GPS fix. This page updates itself if one arrives.'));
+      app.appendChild(card);
+    }
+
+    app.appendChild(disclaimer(
+      'This link stops working the moment ' + who + ' marks themselves safe.'));
+  }
+
+  function load() {
+    var token = (location.hash || '').replace(/^#/, '');
+    if (!/^[A-Za-z0-9_-]{22}$/.test(token)) { ended(); return; }
+
+    fetch(API + encodeURIComponent(token), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ended) { ended(); } else { render(d); } })
+      .catch(function () { /* keep whatever is on screen; try again shortly */ });
+  }
+
+  load();
+  setInterval(load, 25000);
+})();
+</script>
+</body>
+</html>
