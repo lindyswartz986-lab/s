@@ -26,6 +26,7 @@
   .tag { font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
          color: #FF8C82; margin: 0 0 14px }
   .tag.calm { color: #6FD08C }
+  .tag.late { color: #F2C14E }
   h1 { font-size: 30px; line-height: 1.12; margin: 0 0 12px; font-weight: 700 }
   p { margin: 0 0 14px; color: #C9CFC9 }
   .card { background: #13241B; border-radius: 15px; padding: 16px; margin: 18px 0 }
@@ -78,7 +79,7 @@
     app.textContent = '';
     app.appendChild(el('h1', null, 'This link has ended.'));
     app.appendChild(el('p', null,
-      'Sensory links only work while an alert is active. This one has been cancelled, or it has expired.'));
+      'Sensory links only work until the person marks themselves safe, and never for more than a day. This one has ended.'));
     app.appendChild(disclaimer());
   }
 
@@ -93,18 +94,26 @@
 
   function render(d) {
     var emergency = d.kind === 'alert';
+    // A heading-out link is only ever texted when someone is late back, so
+    // 'checkin_overdue' is the case that matters. Amber, not red: it is a
+    // "hasn't checked in", deliberately not a distress alert.
+    var late = d.kind === 'checkin_overdue';
     var who = d.name || 'Someone';
 
     app.textContent = '';
 
-    var tag = el('p', emergency ? 'tag' : 'tag calm',
-      (emergency ? '● Distress alert' : '● Heading out'));
+    var tag = el('p', emergency ? 'tag' : late ? 'tag late' : 'tag calm',
+      emergency ? '● Distress alert' : late ? '● Not checked in' : '● Heading out');
     app.appendChild(tag);
     app.appendChild(el('h1', null,
-      emergency ? who + ' needs help.' : who + ' is heading out.'));
+      emergency ? who + ' needs help.'
+        : late ? who + ' has not checked in.'
+        : who + ' is heading out.'));
     app.appendChild(el('p', null, emergency
       ? who + ' raised an alert on Sensory and chose to share this location with you. It updates by itself while the alert is active.'
-      : who + ' is letting you know they are heading out. This page updates itself until they mark themselves safe.'));
+      : late
+        ? who + ' expected to be back by now and has not marked themselves safe. Below is where they were when they set off. It does not update. Try to call them.'
+        : who + ' is letting you know they are heading out. Below is where they were when they set off.'));
 
     var card = el('div', 'card');
     if (d.lat !== null && d.lng !== null && d.lat !== undefined) {
@@ -115,9 +124,16 @@
         meta.appendChild(document.createTextNode(
           'accurate to about ' + Math.round(d.accuracy) + 'm · '));
       }
-      var stale = (Date.now() - Date.parse(d.updatedAt)) > 10 * 60 * 1000;
-      meta.appendChild(el('span', stale ? 'stale' : 'fresh',
-        'updated ' + howLongAgo(d.updatedAt)));
+      if (emergency) {
+        var stale = (Date.now() - Date.parse(d.updatedAt)) > 10 * 60 * 1000;
+        meta.appendChild(el('span', stale ? 'stale' : 'fresh',
+          'updated ' + howLongAgo(d.updatedAt)));
+      } else {
+        // Taken once, when they set off - an old time here is expected,
+        // so it isn't shown in the "stale" warning colour.
+        meta.appendChild(document.createTextNode(
+          'when they set off, ' + howLongAgo(d.updatedAt)));
+      }
       card.appendChild(meta);
       app.appendChild(card);
 
@@ -126,9 +142,10 @@
       a.rel = 'noreferrer noopener';
       app.appendChild(a);
     } else {
-      card.appendChild(el('p', 'coords', 'No location yet'));
-      card.appendChild(el('p', 'meta',
-        'Their phone has not managed a GPS fix. This page updates itself if one arrives.'));
+      card.appendChild(el('p', 'coords', emergency ? 'No location yet' : 'No location'));
+      card.appendChild(el('p', 'meta', emergency
+        ? 'Their phone has not managed a GPS fix. This page updates itself if one arrives.'
+        : 'Their phone could not get a location when they set off.'));
       app.appendChild(card);
     }
 
